@@ -90,7 +90,18 @@ def decode_review(encoded_review):
 # Function to preprocess user input
 def preprocess_text(text):
     words = text.lower().split()
-    encoded_review = [word_index.get(word, 2) + 3 for word in words]
+    # Limit vocabulary to match training (typically 10000 most common words)
+    # Index 0: padding, 1: start, 2: unknown, 3: unused
+    # So word indices start from 4 and go up to 10003 (10000 + 4 - 1)
+    encoded_review = []
+    for word in words:
+        word_idx = word_index.get(word, 2)  # 2 = unknown word
+        # Ensure the index doesn't exceed vocabulary size (10000 + offset)
+        if word_idx < 10000:  # Keep only indices within vocab range
+            encoded_review.append(word_idx + 3)
+        else:
+            encoded_review.append(2 + 3)  # Use unknown token for out-of-vocab words
+    
     padded_review = sequence.pad_sequences([encoded_review], maxlen=500)
     return padded_review
 
