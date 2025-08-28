@@ -17,7 +17,12 @@ def load_model_with_compatibility(filepath):
             st.write("Fixing compatibility issue with time_major parameter...")
             
             with h5py.File(filepath, 'r') as f:
-                model_config_str = f.attrs['model_config'].decode('utf-8')
+                model_config_raw = f.attrs['model_config']
+                # Handle both string and bytes
+                if isinstance(model_config_raw, bytes):
+                    model_config_str = model_config_raw.decode('utf-8')
+                else:
+                    model_config_str = model_config_raw
                 model_config = json.loads(model_config_str)
                 
                 def clean_config(config):
