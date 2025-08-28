@@ -16,31 +16,62 @@ def load_model_with_compatibility(filepath):
         if 'time_major' in str(e) or 'Unrecognized keyword arguments' in str(e):
             st.write("Fixing compatibility issue with time_major parameter...")
             
-            with h5py.File(filepath, 'r') as f:
-                model_config_raw = f.attrs['model_config']
-                # Handle both string and bytes
-                if isinstance(model_config_raw, bytes):
-                    model_config_str = model_config_raw.decode('utf-8')
-                else:
-                    model_config_str = model_config_raw
-                model_config = json.loads(model_config_str)
+            # Create a temporary copy of the model with fixed configuration
+            import tempfile
+            import shutil
+            
+            # Create a temporary file
+            with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
+                temp_path = temp_file.name
+            
+            # Copy the original file
+            shutil.copy2(filepath, temp_path)
+            
+            try:
+                # Modify the model config in the temporary file
+                with h5py.File(temp_path, 'r+') as f:
+                    model_config_raw = f.attrs['model_config']
+                    # Handle both string and bytes
+                    if isinstance(model_config_raw, bytes):
+                        model_config_str = model_config_raw.decode('utf-8')
+                    else:
+                        model_config_str = model_config_raw
+                    
+                    model_config = json.loads(model_config_str)
+                    
+                    def clean_config(config):
+                        if isinstance(config, dict):
+                            if 'config' in config and isinstance(config['config'], dict):
+                                config['config'].pop('time_major', None)
+                            for key, value in config.items():
+                                if isinstance(value, (dict, list)):
+                                    clean_config(value)
+                        elif isinstance(config, list):
+                            for item in config:
+                                if isinstance(item, (dict, list)):
+                                    clean_config(item)
+                    
+                    clean_config(model_config)
+                    
+                    # Update the model config in the file
+                    cleaned_config_str = json.dumps(model_config)
+                    if isinstance(model_config_raw, bytes):
+                        f.attrs['model_config'] = cleaned_config_str.encode('utf-8')
+                    else:
+                        f.attrs['model_config'] = cleaned_config_str
                 
-                def clean_config(config):
-                    if isinstance(config, dict):
-                        if 'config' in config and isinstance(config['config'], dict):
-                            config['config'].pop('time_major', None)
-                        for key, value in config.items():
-                            config[key] = clean_config(value)
-                    elif isinstance(config, list):
-                        for i, item in enumerate(config):
-                            config[i] = clean_config(item)
-                    return config
-                
-                cleaned_config = clean_config(model_config)
-                model = tf.keras.models.model_from_json(json.dumps(cleaned_config))
-                model.load_weights(filepath)
+                # Load the model from the modified temporary file
+                model = tf.keras.models.load_model(temp_path)
                 st.write("Model loaded successfully with compatibility fixes!")
                 return model
+                
+            finally:
+                # Clean up temporary file
+                import os
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
         else:
             raise e
 
